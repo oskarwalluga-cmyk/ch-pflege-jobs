@@ -1,0 +1,12 @@
+# Gesammelte Stellen-Daten (aendern sich taeglich, gehoeren nicht ins Repo)
+output/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# System
+Thumbs.db
+.DS_Store
