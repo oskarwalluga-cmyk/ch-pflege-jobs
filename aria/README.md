@@ -20,6 +20,13 @@ dich durch den Tag — vom Morgen-Ritual bis zur Abend-Reflexion.
 - **Atmosphäre** — animierte Aurora, Glas-Optik, generierter Klangteppich
   (ambienter Drone-Pad, komplett synthetisiert per Web Audio).
 - **Anpassbare Stimme** — Stimme, Wärme (Pitch) und Tempo frei einstellbar.
+- **Erinnerungen** — sag „erinnere mich um 18:30 an …“ oder „… in 10 Minuten an …“.
+  Aria meldet sich sanft per Stimme und (falls erlaubt) Browser-Benachrichtigung.
+- **Tiefere Gespräche (optional)** — verbinde unter „Stimme“ einen eigenen
+  Claude-API-Schlüssel für echte, fließende Dialoge. Der Schlüssel bleibt nur
+  lokal auf deinem Gerät; ohne Schlüssel antwortet das eingebaute Gehirn offline.
+- **Installierbar (PWA)** — „Zum Startbildschirm hinzufügen“ macht Aria zur App;
+  die Oberfläche funktioniert dank Service Worker auch offline.
 
 ## Starten
 
@@ -43,7 +50,9 @@ python3 -m http.server 8080
 |-------|-------|
 | `index.html` | Struktur, Orb, Dock, Rituale, Einstellungen |
 | `styles.css` | Dark-Theme, Aurora, Glasmorphismus, Animationen |
-| `app.js`     | Sprach-I/O, Gesprächs-„Gehirn“, Erinnerung, Visualizer, Klang |
+| `app.js`     | Sprach-I/O, Gesprächs-„Gehirn“, Claude-Anbindung, Erinnerungen, Visualizer, Klang |
+| `manifest.webmanifest` · `sw.js` | PWA: Installierbarkeit & Offline-Cache |
+| `icon.svg` · `icon-192.png` · `icon-512.png` | App-Icons |
 
 ## Privatsphäre
 

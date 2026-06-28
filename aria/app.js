@@ -11,14 +11,22 @@
   const KEY = "aria.memory.v1";
   const mem = loadMem();
   function loadMem() {
-    try { return JSON.parse(localStorage.getItem(KEY)) || fresh(); }
-    catch { return fresh(); }
+    let m;
+    try { m = JSON.parse(localStorage.getItem(KEY)) || fresh(); }
+    catch { m = fresh(); }
+    // forward-compatible defaults for memories saved by older versions
+    const d = fresh();
+    for (const k of Object.keys(d)) if (m[k] === undefined) m[k] = d[k];
+    m.voice = Object.assign(d.voice, m.voice || {});
+    m.api = Object.assign(d.api, m.api || {});
+    return m;
   }
   function fresh() {
     return {
       name: "", moods: [], journal: [], gratitude: [], intentions: [],
-      lastSeen: null, visits: 0,
-      voice: { uri: "", pitch: 1.1, rate: 0.92, autoSpeak: true }
+      reminders: [], lastSeen: null, visits: 0,
+      voice: { uri: "", pitch: 1.1, rate: 0.92, autoSpeak: true },
+      api: { key: "", model: "claude-sonnet-4-6" }
     };
   }
   function save() { localStorage.setItem(KEY, JSON.stringify(mem)); }
@@ -127,15 +135,132 @@
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
   const N = () => mem.name || "du";
 
-  function handle(raw) {
+  const history = []; // {role, content} for API context
+
+  async function handle(raw) {
     const text = raw.trim();
     if (!text) return;
     bubble(text, "me");
+    history.push({ role: "user", content: text });
     const t = text.toLowerCase();
+
+    // reminders are handled locally even when the API is connected
+    const rem = parseReminder(t, text);
+    if (rem) { setTimeout(() => say(rem), 220); return; }
+
+    // deep mode: route through Claude when a key is set and we're online
+    if (mem.api.key && navigator.onLine) {
+      setStatus("denkt nach…");
+      try {
+        const reply = await askClaude(text);
+        history.push({ role: "assistant", content: reply });
+        say(reply); idleStatus();
+        return;
+      } catch (err) {
+        idleStatus();
+        say("Ich komme gerade nicht an meine tieferen Gedanken — aber ich bin trotzdem hier.", { mute: false });
+        // fall through to local brain below
+      }
+    }
+
     const reply = respond(t, text);
-    // tiny natural pause before she answers
-    setTimeout(() => say(reply), 280);
+    history.push({ role: "assistant", content: reply });
+    setTimeout(() => say(reply), 280); // tiny natural pause
   }
+
+  // ---------- Claude API (optional, direct from browser) ----------
+  async function askClaude(latest) {
+    const sys =
+      `Du bist Aria, eine sanfte, aufmerksame Begleiterin mit femininer, warmer Stimme. ` +
+      `Du sprichst Deutsch, in der Du-Form, ruhig und nah – nie belehrend, nie kühl. ` +
+      `Halte Antworten kurz und menschlich (1–4 Sätze), stelle oft eine sanfte, offene Rückfrage. ` +
+      (mem.name ? `Die Person heißt ${mem.name}. ` : "") +
+      moodContext();
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": mem.api.key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: mem.api.model || "claude-sonnet-4-6",
+        max_tokens: 400,
+        system: sys,
+        messages: history.slice(-12)
+      })
+    });
+    if (!res.ok) throw new Error("api " + res.status);
+    const data = await res.json();
+    return (data.content || []).filter(b => b.type === "text").map(b => b.text).join(" ").trim()
+      || "…";
+  }
+  function moodContext() {
+    if (!mem.moods.length) return "";
+    const recent = mem.moods.slice(-3).map(m => m.level).join(", ");
+    return `Jüngste Stimmungen der Person: ${recent}. Sei entsprechend einfühlsam. `;
+  }
+
+  // ---------- Reminders ----------
+  function parseReminder(t, original) {
+    // "erinnere mich in 10 minuten an ..." | "... in 2 stunden ..."
+    let m = t.match(/erinner(?:e|st)?\s+mich\s+in\s+(\d+)\s*(minute|minuten|min|stunde|stunden|std)\b(?:\s+an\s+(.+))?/i);
+    let when, label;
+    if (m) {
+      const n = parseInt(m[1], 10);
+      const unit = m[2].toLowerCase();
+      const ms = /st/.test(unit) ? n * 3600e3 : n * 60e3;
+      when = Date.now() + ms;
+      label = (m[3] || extractLabel(original)).trim();
+    } else {
+      // "erinnere mich um 18:30 an ..."
+      m = t.match(/erinner(?:e|st)?\s+mich\s+um\s+(\d{1,2})(?::(\d{2}))?(?:\s*uhr)?(?:\s+an\s+(.+))?/i);
+      if (!m) return null;
+      const hh = parseInt(m[1], 10), mm = m[2] ? parseInt(m[2], 10) : 0;
+      const d = new Date(); d.setHours(hh, mm, 0, 0);
+      if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1); // next occurrence
+      when = d.getTime();
+      label = (m[3] || extractLabel(original)).trim();
+    }
+    if (!label) label = "etwas Wichtiges";
+    const r = { id: Date.now() + Math.floor(when % 1000), label, when };
+    mem.reminders.push(r); save(); renderReminders();
+    if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+    return `Ich erinnere dich um ${fmtTime(when)} Uhr an „${label}“. Ich vergesse es nicht.`;
+  }
+  const extractLabel = (s) => (s.match(/\ban\s+(.+)$/i) || [, ""])[1];
+  const fmtTime = (ts) => new Date(ts).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+
+  function checkReminders() {
+    const now = Date.now();
+    const due = mem.reminders.filter(r => r.when <= now);
+    if (!due.length) return;
+    mem.reminders = mem.reminders.filter(r => r.when > now); save(); renderReminders();
+    due.forEach(r => {
+      const line = `Sanfte Erinnerung, ${N()}: ${r.label}.`;
+      if (stage && !stage.hidden) say(line);
+      if ("Notification" in window && Notification.permission === "granted") {
+        try { new Notification("ARIA", { body: r.label, icon: "icon-192.png", silent: false }); } catch {}
+      }
+    });
+  }
+  function renderReminders() {
+    const box = $("#reminderList"); if (!box) return;
+    box.innerHTML = "";
+    const items = [...mem.reminders].sort((a, b) => a.when - b.when);
+    if (!items.length) { box.innerHTML = `<div class="reminder-empty">Noch keine Erinnerungen.</div>`; return; }
+    items.forEach(r => {
+      const el = document.createElement("div");
+      el.className = "reminder-item";
+      el.innerHTML = `<span><span class="rt">${fmtTime(r.when)}</span>${escapeHtml(r.label)}</span>`;
+      const del = document.createElement("button");
+      del.textContent = "×"; del.title = "Löschen";
+      del.onclick = () => { mem.reminders = mem.reminders.filter(x => x.id !== r.id); save(); renderReminders(); };
+      el.appendChild(del); box.appendChild(el);
+    });
+  }
+  const escapeHtml = (s) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   function respond(t, original) {
     // — greetings
@@ -223,7 +348,7 @@
 
     // — help
     if (/(was kannst du|hilfe|funktionen|womit)/.test(t))
-      return `Ich kann zuhören, dich durch deinen Tag begleiten, dein Gefühl festhalten, mit dir atmen und dich an Schönes erinnern. Tippe unten auf ein Ritual — oder sprich einfach weiter.`;
+      return `Ich höre zu, begleite dich durch den Tag, halte dein Gefühl und dein Tagebuch fest, atme mit dir und erinnere dich — sag etwa „erinnere mich um 18:30 an …“. Für tiefere Gespräche kannst du mich unter „Stimme“ mit einem Claude-Schlüssel verbinden. Tippe unten auf ein Ritual oder sprich einfach weiter.`;
 
     // — open reflection (default, varied & warm)
     return pick([
@@ -404,6 +529,13 @@
       chosenVoice = voices.find(v => v.voiceURI === e.target.value) || chosenVoice; save();
     };
     $("#testVoice").onclick = () => speak(`Hallo ${N()}. So klinge ich. Sanft genug für dich?`);
+
+    const apiKey = $("#apiKey"), modelSel = $("#modelSelect");
+    apiKey.value = mem.api.key || "";
+    modelSel.value = mem.api.model || "claude-sonnet-4-6";
+    apiKey.onchange = () => { mem.api.key = apiKey.value.trim(); save(); };
+    modelSel.onchange = () => { mem.api.model = modelSel.value; save(); };
+    renderReminders();
     $("#forget").onclick = () => {
       if (confirm("Soll ich wirklich alles vergessen, was wir geteilt haben?")) {
         localStorage.removeItem(KEY); location.reload();
@@ -468,6 +600,15 @@
 
     initSettings();
     window.addEventListener("resize", fitCanvas);
+
+    // reminders: check every 15s
+    setInterval(checkReminders, 15000);
+    checkReminders();
+
+    // PWA service worker (only on http/https, not file://)
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    }
   }
 
   wire();
