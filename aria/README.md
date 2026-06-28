@@ -20,6 +20,11 @@ dich durch den Tag — vom Morgen-Ritual bis zur Abend-Reflexion.
 - **Atmosphäre** — animierte Aurora, Glas-Optik, generierter Klangteppich
   (ambienter Drone-Pad, komplett synthetisiert per Web Audio).
 - **Anpassbare Stimme** — Stimme, Wärme (Pitch) und Tempo frei einstellbar.
+- **Neurale Stimme (optional, ElevenLabs)** — für eine warm-menschliche, sanfte
+  Frauenstimme. Eigenen kostenlosen API-Schlüssel unter „Stimme" eintragen
+  (bleibt lokal); Aria spricht dann über ElevenLabs (`eleven_multilingual_v2`),
+  und der Orb pulsiert zu ihrer echten Stimme. Ohne Schlüssel/offline nutzt sie
+  die beste Browser-Stimme.
 - **Erinnerungen** — sag „erinnere mich um 18:30 an …“ oder „… in 10 Minuten an …“.
   Aria meldet sich sanft per Stimme und (falls erlaubt) Browser-Benachrichtigung.
 - **Tiefere Gespräche (optional)** — verbinde unter „Stimme“ einen eigenen
