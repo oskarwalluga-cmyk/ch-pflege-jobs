@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#05060a" />
+  <meta name="description" content="Eine atmosphärische, sprachgesteuerte Begleiterin mit sanfter Stimme, die dich durch den Tag begleitet." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ARIA" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <title>ARIA · deine Begleiterin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Atmospheric background layers -->
+  <div class="aurora" aria-hidden="true">
+    <span class="blob b1"></span>
+    <span class="blob b2"></span>
+    <span class="blob b3"></span>
+    <div class="grain"></div>
+    <div class="vignette"></div>
+  </div>
+
+  <!-- Onboarding / name veil -->
+  <div id="veil" class="veil">
+    <div class="veil-card">
+      <div class="veil-orb"></div>
+      <h1 class="veil-title">Hallo.</h1>
+      <p class="veil-sub">Ich bin <em>Aria</em>. Ich werde dich begleiten — leise, aufmerksam, ganz für dich.</p>
+      <input id="nameInput" class="veil-input" type="text" placeholder="Wie darf ich dich nennen?" autocomplete="off" />
+      <button id="beginBtn" class="veil-btn">Beginnen</button>
+      <p class="veil-hint">Sprich mit mir — oder schreib. Ich höre auf beides.</p>
+    </div>
+  </div>
+
+  <!-- Main stage -->
+  <main class="stage" id="stage" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">ARIA</span>
+      </div>
+      <div class="topbar-actions">
+        <button id="ambientBtn" class="chip" title="Klangteppich">~ Ambiente</button>
+        <button id="settingsBtn" class="chip" title="Einstellungen">Stimme</button>
+      </div>
+    </header>
+
+    <!-- The orb -->
+    <section class="orb-wrap">
+      <div id="orb" class="orb" role="button" tabindex="0" aria-label="Sprechen">
+        <canvas id="viz" class="viz"></canvas>
+        <div class="orb-core"></div>
+        <div class="orb-ring r1"></div>
+        <div class="orb-ring r2"></div>
+        <div class="orb-ring r3"></div>
+      </div>
+      <p id="status" class="status">Tippe auf mich, um zu sprechen</p>
+    </section>
+
+    <!-- Conversation -->
+    <section class="convo" id="convo" aria-live="polite"></section>
+
+    <!-- Quick rituals -->
+    <nav class="rituals" id="rituals">
+      <button class="ritual" data-ritual="morning">☀ Morgen</button>
+      <button class="ritual" data-ritual="breathe">❋ Atmen</button>
+      <button class="ritual" data-ritual="mood">♡ Gefühl</button>
+      <button class="ritual" data-ritual="journal">✎ Tagebuch</button>
+      <button class="ritual" data-ritual="evening">☾ Abend</button>
+    </nav>
+
+    <!-- Input dock -->
+    <div class="dock">
+      <button id="micBtn" class="mic" aria-label="Mikrofon">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6">
+          <rect x="9" y="3" width="6" height="11" rx="3"/>
+          <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+        </svg>
+      </button>
+      <input id="textInput" class="dock-input" type="text" placeholder="Sag mir, was dich bewegt…" autocomplete="off" />
+      <button id="sendBtn" class="send" aria-label="Senden">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M5 12h14M13 6l6 6-6 6"/>
+        </svg>
+      </button>
+    </div>
+  </main>
+
+  <!-- Voice settings drawer -->
+  <div id="drawer" class="drawer" hidden>
+    <div class="drawer-inner">
+      <h3>Ihre Stimme</h3>
+      <label class="field">
+        <span>Stimme</span>
+        <select id="voiceSelect"></select>
+      </label>
+      <label class="field">
+        <span>Wärme <small id="pitchVal"></small></span>
+        <input id="pitch" type="range" min="0.6" max="1.4" step="0.05" />
+      </label>
+      <label class="field">
+        <span>Tempo <small id="rateVal"></small></span>
+        <input id="rate" type="range" min="0.6" max="1.2" step="0.05" />
+      </label>
+      <label class="field switch-row">
+        <span>Antwortet von selbst</span>
+        <input id="autoSpeak" type="checkbox" checked />
+      </label>
+      <button id="testVoice" class="veil-btn small">Hör mich</button>
+
+      <div class="divider"></div>
+      <h3 class="sub">Tiefere Gespräche</h3>
+      <p class="note">Verbinde optional einen Claude-Schlüssel für echte, fließende Dialoge. Bleibt nur auf deinem Gerät.</p>
+      <label class="field">
+        <span>Claude API-Schlüssel</span>
+        <input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span>Modell</span>
+        <select id="modelSelect">
+          <option value="claude-sonnet-4-6">Sonnet 4.6 — warm &amp; ausgewogen</option>
+          <option value="claude-opus-4-8">Opus 4.8 — am tiefsten</option>
+          <option value="claude-haiku-4-5-20251001">Haiku 4.5 — schnell</option>
+        </select>
+      </label>
+
+      <div class="divider"></div>
+      <h3 class="sub">Erinnerungen</h3>
+      <p class="note">Sag „erinnere mich um 18:30 an …“ — ich melde mich sanft.</p>
+      <div id="reminderList" class="reminder-list"></div>
+
+      <button id="forget" class="link-danger">Alles vergessen</button>
+      <button id="closeDrawer" class="drawer-close" aria-label="Schließen">×</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
