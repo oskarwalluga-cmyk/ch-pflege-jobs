@@ -19,6 +19,7 @@
     for (const k of Object.keys(d)) if (m[k] === undefined) m[k] = d[k];
     m.voice = Object.assign(d.voice, m.voice || {});
     m.api = Object.assign(d.api, m.api || {});
+    m.tts = Object.assign(d.tts, m.tts || {});
     // one-time retune: older builds defaulted to a too-high pitch that made
     // synthetic voices sound harsh. Apply gentler defaults unless the user
     // has manually adjusted the sliders (voice.tuned).
@@ -30,7 +31,8 @@
       name: "", moods: [], journal: [], gratitude: [], intentions: [],
       reminders: [], lastSeen: null, visits: 0,
       voice: { uri: "", pitch: 1.0, rate: 0.95, autoSpeak: true, tuned: false },
-      api: { key: "", model: "claude-sonnet-4-6" }
+      api: { key: "", model: "claude-sonnet-4-6" },
+      tts: { elevenKey: "", voiceId: "XB0fDUnXU5powFXDhCwa" } // ElevenLabs (default: Charlotte)
     };
   }
   function save() { localStorage.setItem(KEY, JSON.stringify(mem)); }
@@ -80,10 +82,31 @@
   }
 
   let speaking = false;
+  let currentAudio = null;
+
+  // Public entry: prefer ElevenLabs (neural) when a key is set; else browser TTS.
   function speak(text) {
-    if (!synth || !mem.voice.autoSpeak) return;
+    if (!mem.voice.autoSpeak) return;
+    const t = stripEmoji(text);
+    if (!t) return;
+    stopSpeaking();
+    if (mem.tts.elevenKey && navigator.onLine) {
+      speakEleven(t).catch((e) => { console.warn("ElevenLabs fiel aus:", e); browserSpeak(t); });
+    } else {
+      browserSpeak(t);
+    }
+  }
+
+  function stopSpeaking() {
+    try { synth && synth.cancel(); } catch {}
+    if (currentAudio) { try { currentAudio.pause(); } catch {} currentAudio = null; }
+  }
+
+  // --- Browser SpeechSynthesis (fallback / no key) ---
+  function browserSpeak(text) {
+    if (!synth) return;
     synth.cancel();
-    const u = new SpeechSynthesisUtterance(stripEmoji(text));
+    const u = new SpeechSynthesisUtterance(text);
     if (chosenVoice) u.voice = chosenVoice;
     u.lang = chosenVoice ? chosenVoice.lang : "de-DE";
     u.pitch = mem.voice.pitch;
@@ -92,6 +115,51 @@
     u.onstart = () => { speaking = true; orb.classList.add("speaking"); setStatus("…"); };
     u.onend = () => { speaking = false; orb.classList.remove("speaking"); idleStatus(); };
     synth.speak(u);
+  }
+
+  // --- ElevenLabs neural TTS (browser-direct) ---
+  async function speakEleven(text) {
+    const ac = audioCtx || (audioCtx = new (window.AudioContext || window.webkitAudioContext)());
+    if (ac.state === "suspended") { try { await ac.resume(); } catch {} }
+    setStatus("…");
+    const voiceId = mem.tts.voiceId || "XB0fDUnXU5powFXDhCwa";
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+      method: "POST",
+      headers: {
+        "xi-api-key": mem.tts.elevenKey,
+        "content-type": "application/json",
+        "accept": "audio/mpeg"
+      },
+      body: JSON.stringify({
+        text,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true }
+      })
+    });
+    if (!res.ok) throw new Error("eleven " + res.status);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.crossOrigin = "anonymous";
+    currentAudio = audio;
+    // route through Web Audio so the orb reacts to her real voice
+    try {
+      const src = ac.createMediaElementSource(audio);
+      const an = ac.createAnalyser(); an.fftSize = 128;
+      src.connect(an); an.connect(ac.destination);
+      analyser = an; dataArr = new Uint8Array(an.frequencyBinCount);
+    } catch { /* viz optional */ }
+    audio.onplay = () => { speaking = true; orb.classList.add("speaking"); };
+    const cleanup = () => {
+      speaking = false; orb.classList.remove("speaking");
+      analyser = null; dataArr = null;
+      URL.revokeObjectURL(url);
+      if (currentAudio === audio) currentAudio = null;
+      idleStatus();
+    };
+    audio.onended = cleanup;
+    audio.onerror = cleanup;
+    await audio.play();
   }
   const stripEmoji = (t) => t.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}←-⇿✀-➿✎❋♡☀☾☼~›»«]/gu, "").replace(/\s+/g, " ").trim();
 
@@ -123,7 +191,7 @@
   function listen() {
     if (!rec) { setStatus("Sprache wird hier nicht unterstützt — schreib mir gern."); return; }
     if (listening) { rec.stop(); return; }
-    try { synth && synth.cancel(); rec.start(); } catch { /* already running */ }
+    try { stopSpeaking(); rec.start(); } catch { /* already running */ }
   }
 
   // ============================================================
@@ -548,6 +616,29 @@
       chosenVoice = voices.find(v => v.voiceURI === e.target.value) || chosenVoice; save();
     };
     $("#testVoice").onclick = () => speak(`Hallo ${N()}. So klinge ich. Sanft genug für dich?`);
+
+    // ElevenLabs neural voice
+    const eKey = $("#elevenKey"), eVoice = $("#elevenVoice"),
+      eCustomRow = $("#elevenCustomRow"), eCustom = $("#elevenVoiceCustom");
+    eKey.value = mem.tts.elevenKey || "";
+    const presetIds = Array.from(eVoice.options).map(o => o.value);
+    if (mem.tts.voiceId && presetIds.includes(mem.tts.voiceId)) {
+      eVoice.value = mem.tts.voiceId;
+    } else if (mem.tts.voiceId) {
+      eVoice.value = "__custom"; eCustomRow.hidden = false; eCustom.value = mem.tts.voiceId;
+    }
+    eKey.onchange = () => { mem.tts.elevenKey = eKey.value.trim(); save(); };
+    eVoice.onchange = () => {
+      if (eVoice.value === "__custom") {
+        eCustomRow.hidden = false;
+        mem.tts.voiceId = eCustom.value.trim() || mem.tts.voiceId;
+      } else {
+        eCustomRow.hidden = true;
+        mem.tts.voiceId = eVoice.value;
+      }
+      save();
+    };
+    eCustom.onchange = () => { if (eCustom.value.trim()) { mem.tts.voiceId = eCustom.value.trim(); save(); } };
 
     const apiKey = $("#apiKey"), modelSel = $("#modelSelect");
     apiKey.value = mem.api.key || "";

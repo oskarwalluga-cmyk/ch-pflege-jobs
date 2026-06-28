@@ -116,6 +116,28 @@
       <button id="testVoice" class="veil-btn small">Hör mich</button>
 
       <div class="divider"></div>
+      <h3 class="sub">Neurale Stimme · ElevenLabs</h3>
+      <p class="note">Für eine warme, menschliche Stimme. Hol dir einen kostenlosen Schlüssel auf elevenlabs.io (Profil → API Keys). Er bleibt nur auf deinem Gerät. Sobald gesetzt, spricht Aria neural.</p>
+      <label class="field">
+        <span>ElevenLabs API-Schlüssel</span>
+        <input id="elevenKey" type="password" placeholder="sk_…" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span>Stimme</span>
+        <select id="elevenVoice">
+          <option value="XB0fDUnXU5powFXDhCwa">Charlotte — sanft &amp; warm</option>
+          <option value="XrExE9yKIg1WjnnlVkGX">Matilda — warm</option>
+          <option value="pFZP5JQG7iQjIQuC4Bku">Lily — sanft</option>
+          <option value="21m00Tcm4TlvDq8ikWAM">Rachel — ruhig</option>
+          <option value="__custom">Eigene Voice-ID…</option>
+        </select>
+      </label>
+      <label class="field" id="elevenCustomRow" hidden>
+        <span>Eigene Voice-ID</span>
+        <input id="elevenVoiceCustom" type="text" placeholder="z. B. XB0fDUnXU5powFXDhCwa" autocomplete="off" />
+      </label>
+
+      <div class="divider"></div>
       <h3 class="sub">Tiefere Gespräche</h3>
       <p class="note">Verbinde optional einen Claude-Schlüssel für echte, fließende Dialoge. Bleibt nur auf deinem Gerät.</p>
       <label class="field">
