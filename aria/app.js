@@ -19,13 +19,17 @@
     for (const k of Object.keys(d)) if (m[k] === undefined) m[k] = d[k];
     m.voice = Object.assign(d.voice, m.voice || {});
     m.api = Object.assign(d.api, m.api || {});
+    // one-time retune: older builds defaulted to a too-high pitch that made
+    // synthetic voices sound harsh. Apply gentler defaults unless the user
+    // has manually adjusted the sliders (voice.tuned).
+    if (!m.voice.tuned) { m.voice.pitch = 1.0; m.voice.rate = 0.95; }
     return m;
   }
   function fresh() {
     return {
       name: "", moods: [], journal: [], gratitude: [], intentions: [],
       reminders: [], lastSeen: null, visits: 0,
-      voice: { uri: "", pitch: 1.1, rate: 0.92, autoSpeak: true },
+      voice: { uri: "", pitch: 1.0, rate: 0.95, autoSpeak: true, tuned: false },
       api: { key: "", model: "claude-sonnet-4-6" }
     };
   }
@@ -44,19 +48,31 @@
   let voices = [];
   let chosenVoice = null;
 
+  // Quality score: higher = more natural / more likely a soft female German voice.
+  function voiceScore(v) {
+    const n = (v.name || "").toLowerCase();
+    let s = 0;
+    const isDe = /de[-_]/i.test(v.lang) || /german|deutsch/.test(n);
+    if (isDe) s += 100;                                   // German first
+    if (/natural|neural/.test(n)) s += 80;               // MS "Online (Natural)" — best quality
+    if (/google/.test(n)) s += 50;                       // Google network voices — very good
+    if (/premium|enhanced|siri/.test(n)) s += 45;        // Apple premium
+    if (v.localService === false) s += 18;               // network voices ≈ higher quality
+    // soft female-leaning German/EN names
+    if (/(katja|marlene|vicki|hedda|petra|anna|seraphina|amala|helena|female|frau|klara|gisela)/.test(n)) s += 30;
+    // robotic / low-quality engines — push down hard
+    if (/(espeak|festival|mbrola|robo|compact|pico|fallback)/.test(n)) s -= 120;
+    if (/male\b|männ|stefan|markus|conrad|hans/.test(n)) s -= 20; // de-prioritise obvious male
+    return s;
+  }
+
   function refreshVoices() {
     voices = synth ? synth.getVoices() : [];
-    // Prefer a soft German female voice; fall back gracefully.
-    const pick = (list) => list.find(Boolean);
-    const de = voices.filter(v => /de(-|_)/i.test(v.lang) || /german|deutsch/i.test(v.name));
-    const femaleHints = /(anna|petra|marlene|katja|vicki|female|frau|google deutsch|hedda|helena)/i;
+    const ranked = [...voices].sort((a, b) => voiceScore(b) - voiceScore(a));
     chosenVoice =
       (mem.voice.uri && voices.find(v => v.voiceURI === mem.voice.uri)) ||
-      pick(de.filter(v => femaleHints.test(v.name))) ||
-      pick(de) ||
-      pick(voices.filter(v => femaleHints.test(v.name))) ||
-      voices[0] || null;
-    buildVoiceMenu();
+      ranked[0] || null;
+    buildVoiceMenu(ranked);
   }
   if (synth) {
     refreshVoices();
@@ -507,12 +523,15 @@
   // ============================================================
   //  SETTINGS DRAWER
   // ============================================================
-  function buildVoiceMenu() {
+  function buildVoiceMenu(ranked) {
     const sel = $("#voiceSelect"); if (!sel) return;
     sel.innerHTML = "";
-    voices.forEach(v => {
+    const list = ranked || [...voices].sort((a, b) => voiceScore(b) - voiceScore(a));
+    list.forEach(v => {
       const o = document.createElement("option");
-      o.value = v.voiceURI; o.textContent = `${v.name} (${v.lang})`;
+      const good = voiceScore(v) >= 130;        // German + a quality signal
+      o.value = v.voiceURI;
+      o.textContent = `${good ? "★ " : ""}${v.name} (${v.lang})`;
       if (chosenVoice && v.voiceURI === chosenVoice.voiceURI) o.selected = true;
       sel.appendChild(o);
     });
@@ -521,8 +540,8 @@
     const pitch = $("#pitch"), rate = $("#rate"), pv = $("#pitchVal"), rv = $("#rateVal"), as = $("#autoSpeak");
     pitch.value = mem.voice.pitch; rate.value = mem.voice.rate; as.checked = mem.voice.autoSpeak;
     pv.textContent = mem.voice.pitch; rv.textContent = mem.voice.rate;
-    pitch.oninput = () => { mem.voice.pitch = +pitch.value; pv.textContent = pitch.value; save(); };
-    rate.oninput = () => { mem.voice.rate = +rate.value; rv.textContent = rate.value; save(); };
+    pitch.oninput = () => { mem.voice.pitch = +pitch.value; mem.voice.tuned = true; pv.textContent = pitch.value; save(); };
+    rate.oninput = () => { mem.voice.rate = +rate.value; mem.voice.tuned = true; rv.textContent = rate.value; save(); };
     as.onchange = () => { mem.voice.autoSpeak = as.checked; save(); };
     $("#voiceSelect").onchange = (e) => {
       mem.voice.uri = e.target.value;
