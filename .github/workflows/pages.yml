@@ -2,7 +2,7 @@ name: Deploy ARIA to GitHub Pages
 
 on:
   push:
-    branches: [claude/voice-ai-life-companion-n5rtj9]
+    branches: [main, claude/voice-ai-life-companion-n5rtj9]
   workflow_dispatch:
 
 permissions:
