@@ -1,5 +1,5 @@
 /* ARIA service worker — offline-first shell cache */
-const CACHE = "aria-v4";
+const CACHE = "aria-v5";
 const ASSETS = [
   "./",
   "./index.html",

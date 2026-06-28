@@ -32,7 +32,7 @@
       reminders: [], lastSeen: null, visits: 0,
       voice: { uri: "", pitch: 1.0, rate: 0.95, autoSpeak: true, tuned: false },
       api: { key: "", model: "claude-sonnet-4-6" },
-      tts: { elevenKey: "", voiceId: "XB0fDUnXU5powFXDhCwa" } // ElevenLabs (default: Charlotte)
+      tts: { elevenKey: "", voiceId: "4th406biweUoMWtOBuXX" } // ElevenLabs (default voice)
     };
   }
   function save() { localStorage.setItem(KEY, JSON.stringify(mem)); }
@@ -135,7 +135,7 @@
     const ac = audioCtx || (audioCtx = new (window.AudioContext || window.webkitAudioContext)());
     if (ac.state === "suspended") { try { await ac.resume(); } catch {} }
     setStatus("…");
-    const voiceId = mem.tts.voiceId || "XB0fDUnXU5powFXDhCwa";
+    const voiceId = mem.tts.voiceId || "4th406biweUoMWtOBuXX";
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
       method: "POST",
       headers: {
