@@ -91,10 +91,23 @@
     if (!t) return;
     stopSpeaking();
     if (mem.tts.elevenKey && navigator.onLine) {
-      speakEleven(t).catch((e) => { console.warn("ElevenLabs fiel aus:", e); browserSpeak(t); });
+      speakEleven(t).catch((e) => {
+        console.warn("ElevenLabs fiel aus:", e);
+        setStatus("Neurale Stimme aus (" + humanVoiceErr(e) + ") — nutze Browser-Stimme");
+        browserSpeak(t);
+      });
     } else {
       browserSpeak(t);
     }
+  }
+  function humanVoiceErr(e) {
+    const s = e && e.status;
+    if (s === 401) return "Schlüssel ungültig";
+    if (s === 403) return "Zugriff verweigert";
+    if (s === 422) return "Voice-ID ungültig";
+    if (s === 429) return "Kontingent/Limit erreicht";
+    if (e && e.name === "TypeError") return "Netzwerk/CORS blockiert";
+    return (e && e.message) ? e.message : "unbekannt";
   }
 
   function stopSpeaking() {
@@ -136,7 +149,13 @@
         voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true }
       })
     });
-    if (!res.ok) throw new Error("eleven " + res.status);
+    if (!res.ok) {
+      let detail = "";
+      try { const j = await res.json(); detail = (j.detail && (j.detail.message || j.detail.status)) || ""; } catch {}
+      const err = new Error("HTTP " + res.status + (detail ? ": " + detail : ""));
+      err.status = res.status;
+      throw err;
+    }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
@@ -615,7 +634,24 @@
       mem.voice.uri = e.target.value;
       chosenVoice = voices.find(v => v.voiceURI === e.target.value) || chosenVoice; save();
     };
-    $("#testVoice").onclick = () => speak(`Hallo ${N()}. So klinge ich. Sanft genug für dich?`);
+    $("#testVoice").onclick = async () => {
+      const line = `Hallo ${N()}. So klinge ich jetzt. Sanft genug für dich?`;
+      if (mem.tts.elevenKey && navigator.onLine) {
+        setStatus("Teste neurale Stimme…");
+        stopSpeaking();
+        try {
+          await speakEleven(stripEmoji(line));
+          setStatus("★ ElevenLabs aktiv");
+        } catch (e) {
+          const msg = humanVoiceErr(e);
+          setStatus("ElevenLabs-Fehler: " + msg);
+          bubble("⚠ Neurale Stimme fehlgeschlagen: " + msg + ". Prüfe Schlüssel/Voice-ID. (Es spricht jetzt die Browser-Stimme.)", "aria");
+          browserSpeak(stripEmoji(line));
+        }
+      } else {
+        speak(line);
+      }
+    };
 
     // ElevenLabs neural voice
     const eKey = $("#elevenKey"), eVoice = $("#elevenVoice"),
@@ -627,7 +663,8 @@
     } else if (mem.tts.voiceId) {
       eVoice.value = "__custom"; eCustomRow.hidden = false; eCustom.value = mem.tts.voiceId;
     }
-    eKey.onchange = () => { mem.tts.elevenKey = eKey.value.trim(); save(); };
+    const saveKey = () => { mem.tts.elevenKey = eKey.value.trim(); save(); };
+    eKey.oninput = saveKey; eKey.onchange = saveKey;
     eVoice.onchange = () => {
       if (eVoice.value === "__custom") {
         eCustomRow.hidden = false;
@@ -717,7 +754,14 @@
 
     // PWA service worker (only on http/https, not file://)
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-      navigator.serviceWorker.register("sw.js").catch(() => {});
+      const hadController = !!navigator.serviceWorker.controller;
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        // a newer version took over — reload once to run the fresh code
+        if (refreshing || !hadController) return;
+        refreshing = true; location.reload();
+      });
+      navigator.serviceWorker.register("sw.js").then((reg) => { try { reg.update(); } catch {} }).catch(() => {});
     }
   }
 
